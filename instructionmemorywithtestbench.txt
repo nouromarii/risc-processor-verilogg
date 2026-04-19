@@ -1,0 +1,90 @@
+// ==============================================
+// 32-bit Instruction Memory Module
+//  Supports 32-bit word-addressable reads
+//  Handles pipeline stalls
+// Preloaded with test programs
+// ==============================================
+module InstructionMemory(
+    input wire clk,
+    input wire stall, 
+    input wire [31:0] Address,     // Word address (32-bit PC)
+    output reg [31:0] Instruction  // 32-bit instruction output
+);
+
+    // 1KB instruction memory (256 words)
+    parameter DEPTH = 256;
+    reg [31:0] instMemory [0:DEPTH-1];
+
+    // Asynchronous read with stall support
+    always @(posedge clk) begin
+        if (!stall) begin
+            Instruction <= instMemory[Address[31:2]]; // Convert byte address to word address
+        end
+    end
+
+    // Initialize with test programs
+    initial begin
+        // Clear memory
+        for (integer i = 0; i < DEPTH; i = i + 1)
+            instMemory[i] = 32'h00000000;
+
+        // Sample program 1: Arithmetic operations
+        instMemory[0] = {6'd0, 4'd1, 4'd2, 4'd3, 14'd0};  // OR R1, R2, R3
+        instMemory[1] = {6'd1, 4'd4, 4'd5, 4'd6, 14'd0};  // ADD R4, R5, R6
+        instMemory[2] = {6'd2, 4'd7, 4'd8, 4'd9, 14'd0};  // SUB R7, R8, R9
+
+        // Sample program 2: Memory operations
+        instMemory[4] = {6'd6, 4'd1, 4'd2, 16'd10};       // LW R1, 10(R2)
+        instMemory[5] = {6'd8, 4'd0, 4'd3, 16'd20};       // LDW R0, 20(R3) (even reg)
+        instMemory[6] = {6'd7, 4'd4, 4'd5, 16'd30};       // SW R4, 30(R5)
+
+        // Sample program 3: Control flow
+        instMemory[8] = {6'd10, 4'd1, 16'd4};             // BZ R1, +4
+        instMemory[9] = {6'd14, 26'd16};                  // J 16
+        instMemory[10] = {6'd15, 26'd24};                 // CALL 24 (saves PC+1 in R14)
+    end
+endmodule
+
+// ==============================================
+// Instruction Memory Testbench
+// ==============================================
+module InstructionMemory_TB;
+    reg clk;
+    reg stall;
+    reg [31:0] Address;
+    wire [31:0] Instruction;
+
+    InstructionMemory uut (
+        .clk(clk),
+        .stall(stall),
+        .Address(Address),
+        .Instruction(Instruction)
+    );
+
+    // Clock generation (100MHz)
+    initial begin
+        clk = 0;
+        forever #5 clk = ~clk;
+    end
+
+    initial begin
+        // Initialize
+        stall = 0;
+        Address = 32'h00000000;
+        
+        // Test sequence
+        #10 Address = 32'h00000000; // Fetch first instruction
+        #10 Address = 32'h00000004; // Fetch second instruction
+        #10 stall = 1;              // Simulate pipeline stall
+        #10 Address = 32'h00000008;
+        #10 stall = 0;
+        #10 Address = 32'h0000000C;
+        
+        #20 $finish;
+    end
+
+    initial begin
+        $monitor("Time=%0t PC=%h Instruction=%h", 
+                $time, Address, Instruction);
+    end
+endmodule

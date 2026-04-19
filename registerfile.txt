@@ -1,0 +1,101 @@
+// =========================
+// 32-bit Register File
+// =========================
+module RegisterFile(
+    input wire clk,
+    input wire reset,
+    input wire RegWrite,          // Write enable
+    input wire [3:0] ReadReg1,    // Rs1 address (4-bit for 16 regs)
+    input wire [3:0] ReadReg2,    // Rs2 address
+    input wire [3:0] WriteReg,    // Rd address
+    input wire [31:0] WriteData,  // Data to write (32-bit)
+    output wire [31:0] ReadData1, // Rs1 data
+    output wire [31:0] ReadData2  // Rs2 data
+);
+
+    // 16x32-bit registers (R0-R15)
+    reg [31:0] registers [0:15];
+
+    // Combinational reads
+    assign ReadData1 = (ReadReg1 == 4'd15) ? PC : registers[ReadReg1];
+    assign ReadData2 = (ReadReg2 == 4'd15) ? PC : registers[ReadReg2];
+
+    // PC (R15) handling
+    reg [31:0] PC;
+    always @(posedge clk) begin
+        if (reset) begin
+            PC <= 32'h0000_0000;  // Reset PC
+            for (integer i = 0; i < 16; i=i+1)
+                registers[i] <= 32'd0;
+        end
+        else if (RegWrite) begin
+            if (WriteReg != 4'd15)  // Prevent writing to PC (R15)
+                registers[WriteReg] <= WriteData;
+        end
+    end
+
+    // Special handling for R14 (return address) and R15 (PC)
+    // - R14 is writable like normal registers
+    // - PC updates come from Fetch stage (not through RegWrite)
+endmodule
+
+
+// =========================
+// Testbench
+// =========================
+module RegisterFile_TB;
+    reg clk, reset;
+    reg RegWrite;
+    reg [3:0] ReadReg1, ReadReg2, WriteReg;
+    reg [31:0] WriteData;
+    wire [31:0] ReadData1, ReadData2;
+
+    RegisterFile uut (
+        .clk(clk),
+        .reset(reset),
+        .RegWrite(RegWrite),
+        .ReadReg1(ReadReg1),
+        .ReadReg2(ReadReg2),
+        .WriteReg(WriteReg),
+        .WriteData(WriteData),
+        .ReadData1(ReadData1),
+        .ReadData2(ReadData2)
+    );
+
+    // Clock generation
+    initial begin
+        clk = 0;
+        forever #5 clk = ~clk;
+    end
+
+    initial begin
+        // Initialize
+        reset = 1;
+        RegWrite = 0;
+        ReadReg1 = 0; ReadReg2 = 0; WriteReg = 0;
+        WriteData = 0;
+        #10 reset = 0;
+
+        // Test 1: Read initial values (should be 0 after reset)
+        ReadReg1 = 4'd0; ReadReg2 = 4'd1; #10;
+        $display("R0=%h, R1=%h", ReadData1, ReadData2);
+
+        // Test 2: Write to R1 and R14 (return address)
+        RegWrite = 1;
+        WriteReg = 4'd1; WriteData = 32'h1234_5678; #10;
+        WriteReg = 4'd14; WriteData = 32'hDEAD_BEEF; #10;
+        RegWrite = 0;
+
+        // Test 3: Read back
+        ReadReg1 = 4'd1; ReadReg2 = 4'd14; #10;
+        $display("R1=%h, R14=%h", ReadData1, ReadData2);
+
+        // Test 4: Attempt to write to R15 (PC) - should fail
+        RegWrite = 1;
+        WriteReg = 4'd15; WriteData = 32'hCAFE_BABE; #10;
+        ReadReg1 = 4'd15; #10;
+        $display("PC (R15)=%h (should be 0000_0000)", ReadData1);
+        
+        $finish;
+    end
+endmodule

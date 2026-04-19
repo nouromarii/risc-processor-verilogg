@@ -1,0 +1,31 @@
+module IF_ID(
+    input wire clk,
+    input wire reset,
+    input wire stall,
+    input wire flush,
+    input wire [31:0] IF_PC,
+    input wire [31:0] IF_nextPC,
+    input wire [31:0] IF_Instruction,
+    output reg [31:0] ID_PC,
+    output reg [31:0] ID_nextPC,
+    output reg [31:0] ID_Instruction,
+    input wire is_ldw_sdw_stall,
+    output reg ID_is_ldw_sdw
+);
+
+    always @(posedge clk or posedge reset) begin
+        if (reset || flush) begin
+            ID_PC <= 32'b0;
+            ID_nextPC <= 32'b0;
+            ID_Instruction <= 32'b0;
+            ID_is_ldw_sdw <= 1'b0;
+        end
+        else if (!stall && !is_ldw_sdw_stall) begin
+            ID_PC <= IF_PC;
+            ID_nextPC <= IF_nextPC;
+            ID_Instruction <= IF_Instruction;
+            ID_is_ldw_sdw <= (IF_Instruction[31:26] == 6'b001000 || IF_Instruction[31:26] == 6'b001001);
+        end
+    end
+
+endmodule

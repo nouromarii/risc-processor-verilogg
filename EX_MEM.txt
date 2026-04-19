@@ -1,0 +1,54 @@
+module EXE_MEM(
+    input wire clk,
+    input wire reset,
+    
+    // From EXE stage
+    input wire [3:0] EXE_Rd,            // Destination register
+    input wire EXE_RegWr,               // Register write enable
+    input wire EXE_MemR,                // Memory read enable
+    input wire EXE_MemW,                // Memory write enable
+    input wire EXE_WB,                  // Writeback control
+    input wire [31:0] EXE_StoreData,    // Data to store (for SW/SDW)
+    input wire [31:0] EXE_ALUResult,    // ALU computation result
+    
+    // To MEM stage
+    output reg [3:0] MEM_Rd,
+    output reg MEM_RegWr,
+    output reg MEM_MemR,
+    output reg MEM_MemW,
+    output reg MEM_WB,
+    output reg [31:0] MEM_StoreData,
+    output reg [31:0] MEM_ALUResult,
+    
+    // LDW/SDW control
+    input wire EXE_is_ldw_sdw,
+    output reg MEM_is_ldw_sdw,
+    input wire EXE_is_second_cycle,
+    output reg MEM_is_second_cycle
+);
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            MEM_Rd <= 4'b0;
+            MEM_RegWr <= 1'b0;
+            MEM_MemR <= 1'b0;
+            MEM_MemW <= 1'b0;
+            MEM_WB <= 1'b0;
+            MEM_StoreData <= 32'b0;
+            MEM_ALUResult <= 32'b0;
+            MEM_is_ldw_sdw <= 1'b0;
+            MEM_is_second_cycle <= 1'b0;
+        end else begin
+            MEM_Rd <= EXE_Rd;
+            MEM_RegWr <= EXE_RegWr;
+            MEM_MemR <= EXE_MemR;
+            MEM_MemW <= EXE_MemW;
+            MEM_WB <= EXE_WB;
+            MEM_StoreData <= EXE_StoreData;
+            MEM_ALUResult <= EXE_ALUResult;
+            MEM_is_ldw_sdw <= EXE_is_ldw_sdw;
+            MEM_is_second_cycle <= EXE_is_second_cycle;
+        end
+    end
+
+endmodule

@@ -1,0 +1,28 @@
+module MEM_WB(
+    input wire clk,
+    input wire reset,
+    input wire [3:0] RdIn,         
+    output reg [3:0] RdOut,
+    input wire RegWrIn,             
+    output reg RegWrOut,
+    input wire [31:0] WBDataIn,         
+output reg [31:0] WBDataOut,
+    input wire is_ldw_second_cycle,  
+    output reg is_ldw_second_cycle_out
+);
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            RdOut <= 4'b0;
+            RegWrOut <= 1'b0;
+            WBDataOut <= 32'b0;
+            is_ldw_second_cycle_out <= 1'b0;
+        end else begin
+            RdOut <= RdIn;
+            RegWrOut <= RegWrIn;
+            WBDataOut <= WBDataIn;
+            is_ldw_second_cycle_out <= is_ldw_second_cycle;
+        end
+    end
+
+endmodule

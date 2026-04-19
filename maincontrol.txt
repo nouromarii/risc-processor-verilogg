@@ -1,0 +1,217 @@
+module MemoryControlUnit(
+    input wire clk,
+    input wire reset,
+    input wire [5:0] opcode,
+    input wire [3:0] Rd,
+    output reg is_ldw,
+    output reg is_sdw,
+    output reg is_second_cycle,
+    output reg exception
+);
+
+    reg [1:0] state;
+    localparam IDLE = 2'b00;
+    localparam FIRST_CYCLE = 2'b01;
+    localparam SECOND_CYCLE = 2'b10;
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            is_ldw <= 1'b0;
+            is_sdw <= 1'b0;
+            is_second_cycle <= 1'b0;
+            state <= IDLE;
+            exception <= 1'b0;
+        end else begin
+            case (state)
+                IDLE: begin
+                    is_second_cycle <= 1'b0;
+                    exception <= 1'b0;
+                    if (opcode == 6'b001000) begin
+                        if (Rd[0] == 1'b1) begin
+                            exception <= 1'b1;
+                        end else begin
+                            is_ldw <= 1'b1;
+                            state <= FIRST_CYCLE;
+                        end
+                    end
+                    else if (opcode == 6'b001001) begin
+                        if (Rd[0] == 1'b1) begin
+                            exception <= 1'b1;
+                        end else begin
+                            is_sdw <= 1'b1;
+                            state <= FIRST_CYCLE;
+                        end
+                    end
+                    else if (opcode == 6'b000110) begin
+                        is_ldw <= 1'b0;
+                    end
+                    else if (opcode == 6'b000111) begin
+                        is_sdw <= 1'b0;
+                    end
+                end
+                FIRST_CYCLE: begin
+                    is_second_cycle <= 1'b1;
+                    state <= SECOND_CYCLE;
+                end
+                SECOND_CYCLE: begin
+                    is_ldw <= 1'b0;
+                    is_sdw <= 1'b0;
+                    is_second_cycle <= 1'b0;
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+endmodule
+
+module LoadStoreUnit(
+    input wire clk,
+    input wire reset,
+    input wire [31:0] rs_value,
+    input wire [31:0] rt_value,
+    input wire [31:0] imm_value,
+    input wire [31:0] data_in,
+    input wire [5:0] opcode,
+    input wire is_ldw,
+    input wire is_sdw,
+    input wire is_second_cycle,
+    output reg [31:0] mem_address,
+    output reg [31:0] data_out,
+    output reg [31:0] load_data,
+    output reg mem_read,
+    output reg mem_write,
+    output reg [3:0] reg_dest,
+    output reg reg_write
+);
+
+    reg [31:0] first_word_address;
+    reg [31:0] first_word_data;
+
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            mem_address <= 32'b0;
+            data_out <= 32'b0;
+            load_data <= 32'b0;
+            mem_read <= 1'b0;
+            mem_write <= 1'b0;
+            reg_dest <= 4'b0;
+            reg_write <= 1'b0;
+            first_word_address <= 32'b0;
+            first_word_data <= 32'b0;
+        end else begin
+            mem_read <= 1'b0;
+            mem_write <= 1'b0;
+            reg_write <= 1'b0;
+            
+            case (opcode)
+                6'b000110: begin
+                    if (!is_second_cycle) begin
+                        mem_address <= rs_value + imm_value;
+                        mem_read <= 1'b1;
+                        reg_dest <= Rd;
+                    end
+                end
+                6'b001000: begin
+                    if (!is_second_cycle) begin
+                        first_word_address <= rs_value + imm_value;
+                        mem_address <= rs_value + imm_value;
+                        mem_read <= 1'b1;
+                        reg_dest <= Rd;
+                    end else begin
+                        mem_address <= first_word_address + 32'd1;
+                        mem_read <= 1'b1;
+                        reg_dest <= Rd + 4'd1;
+                    end
+                end
+                6'b000111: begin
+                    if (!is_second_cycle) begin
+                        mem_address <= rs_value + imm_value;
+                        data_out <= rt_value;
+                        mem_write <= 1'b1;
+                    end
+                end
+                6'b001001: begin
+                    if (!is_second_cycle) begin
+                        first_word_address <= rs_value + imm_value;
+                        first_word_data <= rt_value;
+                        mem_address <= rs_value + imm_value;
+                        data_out <= rt_value;
+                        mem_write <= 1'b1;
+                    end else begin
+                        mem_address <= first_word_address + 32'd1;
+                        data_out <= rt_value + 32'd1;
+                        mem_write <= 1'b1;
+                    end
+                end
+            endcase
+            
+            if (mem_read) begin
+                load_data <= data_in;
+                reg_write <= 1'b1;
+            end
+        end
+    end
+endmodule
+
+module Processor(
+    input wire clk,
+    input wire reset
+);
+
+    wire [5:0] opcode;
+    wire [3:0] Rd;
+    wire is_ldw;
+    wire is_sdw;
+    wire is_second_cycle;
+    wire exception;
+    wire [31:0] rs_value;
+    wire [31:0] rt_value;
+    wire [31:0] imm_value;
+    wire [31:0] data_in;
+    wire [31:0] mem_address;
+    wire [31:0] data_out;
+    wire [31:0] load_data;
+    wire mem_read;
+    wire mem_write;
+    wire [3:0] reg_dest;
+    wire reg_write;
+
+    MemoryControlUnit mcu(
+        .clk(clk),
+        .reset(reset),
+        .opcode(opcode),
+        .Rd(Rd),
+        .is_ldw(is_ldw),
+        .is_sdw(is_sdw),
+        .is_second_cycle(is_second_cycle),
+        .exception(exception)
+    );
+
+    LoadStoreUnit lsu(
+        .clk(clk),
+        .reset(reset),
+        .rs_value(rs_value),
+        .rt_value(rt_value),
+        .imm_value(imm_value),
+        .data_in(data_in),
+        .opcode(opcode),
+        .is_ldw(is_ldw),
+        .is_sdw(is_sdw),
+        .is_second_cycle(is_second_cycle),
+        .mem_address(mem_address),
+        .data_out(data_out),
+        .load_data(load_data),
+        .mem_read(mem_read),
+        .mem_write(mem_write),
+        .reg_dest(reg_dest),
+        .reg_write(reg_write)
+    );
+
+    always @(posedge clk) begin
+        if (exception) begin
+            pipeline_flush <= 1'b1;
+            pc <= exception_handler_address;
+            cause_register <= 4'b1000;
+        end
+    end
+endmodule

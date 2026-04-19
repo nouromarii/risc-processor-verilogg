@@ -1,0 +1,77 @@
+module FetchStage (
+    input wire clk,
+    input wire reset,
+    input wire kill,                // Pipeline flush signal
+    input wire stall,               // Pipeline stall signal
+    input wire BranchTaken,         // From Execute stage
+    input wire [1:0] PCSrc,         // 00=PC+4, 01=Branch, 10=Jump, 11=Forward
+    input wire [31:0] BranchTarget, // Calculated branch target
+    input wire [31:0] JumpTarget,   // Jump target address
+    input wire [31:0] ForwardTarget,// Forwarded target (for exceptions etc.)
+    
+    output reg [31:0] PC_out,       // Current PC value (for Writeback)
+    output reg [31:0] Instruction_out // Current instruction
+);
+
+    // Program Counter
+    reg [31:0] PC;
+    
+    // Instruction Memory Interface
+    wire [31:0] instruction_wire;
+    
+    // Instruction Memory instance (word-addressable)
+    InstructionMemory instruction_mem (
+        .clk(clk),
+        .Address(PC[31:2]),         // Convert byte address to word address
+        .Instruction(instruction_wire)
+    );
+
+    // Pipeline Kill Mux
+    wire [31:0] killed_instruction = kill ? 32'b0 : instruction_wire;
+
+    // PC Update Logic
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            PC <= 32'b0;
+            PC_out <= 32'b0;
+            Instruction_out <= 32'b0;
+        end
+        else if (!stall) begin
+            // Update PC based on control signals
+            case ({BranchTaken, PCSrc})
+                {1'b1, 2'bxx}:  PC <= BranchTarget;  // Branch has highest priority
+                {1'b0, 2'b01}:  PC <= BranchTarget;
+                {1'b0, 2'b10}:  PC <= JumpTarget;
+                {1'b0, 2'b11}:  PC <= ForwardTarget;
+                default:        PC <= PC + 4;       // Normal sequential execution
+            endcase
+            
+            // Register outputs
+            PC_out <= PC;                   // Output current PC before update
+            Instruction_out <= killed_instruction; // Output current instruction
+        end
+        // During stall, all registers maintain their values
+    end
+
+endmodule
+
+
+// Supporting Instruction Memory Module
+module InstructionMemory (
+    input wire clk,
+    input wire [29:0] Address,      // Word address (32-bit byte address >> 2)
+    output reg [31:0] Instruction
+);
+    // 1MB instruction memory (256K words)
+    reg [31:0] mem [0:262143];
+    
+    // Initialize with some default instructions
+    initial begin
+        mem[0] = 32'h00000000; // NOP
+        // Add more initialization as needed
+    end
+    
+    always @(posedge clk) begin
+        Instruction <= mem[Address];
+    end
+endmodule
